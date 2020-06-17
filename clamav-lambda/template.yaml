@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS Lambda Function to scan for viruses in files
+Parameters:
+  ClamAvAddr:
+    Description: Please provide the clamav endpoitn address
+    Type: String
+    Default: http://clamav-rest-elb-995404766.us-east-1.elb.amazonaws.com
+  ClamAvBucket:
+    Description: Please provide the clamav bucket to be scanned
+    Type: String
+    Default: clamavbucket-sample-891721897987
+  ClamAvQBucket:
+    Description: Please provide the clamav endpoitn address
+    Type: String
+    Default: quarantine-12190
+
+Globals:
+  Function:
+    Timeout: 5
+
+Resources:
+  ClamAvS3QuarantineBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref ClamAvQBucket
+  ClamAvS3EventSourceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref ClamAvBucket
+  ClamAvAccessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: clamav_access/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      Environment:
+        Variables:
+          CLAMAV_ADDR: !Ref ClamAvAddr
+      Events:
+        ClamAVS3:
+          Type: S3
+          Properties:
+            Bucket: !Ref ClamAvS3EventSourceBucket
+            Events: s3:ObjectCreated:*
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ClamAvBucket
+        - S3CrudPolicy:
+            BucketName: !Ref ClamAvQBucket
+
+Outputs:
+  ClamAvAccessFunction:
+    Description: "Hashicorp Vault Lambda Function ARN"
+    Value: !GetAtt ClamAvAccessFunction.Arn
