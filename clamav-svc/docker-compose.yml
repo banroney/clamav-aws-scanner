@@ -1,8 +1,12 @@
 version: '2'
 services:
-  clamav-rest:
-    mem_reservation: 262144000
-    mem_limit: 1048576000
-    image: sf-epics/clamav-rest
+  clamav-svc:
+    environment: 
+      - HMAC_KEY=<Enter your key here>
+      - ROLES_DYNAMOTABLE=clamavroles
+    image: clamav/clamav-svc
+    build: .
     ports:
       - "9000:9000"
+    volumes:
+      - ~/.aws/:/root/.aws:ro

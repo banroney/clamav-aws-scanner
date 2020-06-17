@@ -38,6 +38,7 @@ Resources:
       Environment:
         Variables:
           CLAMAV_ADDR: !Ref ClamAvAddr
+          CLAMAV_QBUCKET: !Ref ClamAvQBucket
       Events:
         ClamAVS3:
           Type: S3

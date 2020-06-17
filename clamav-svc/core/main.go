@@ -51,23 +51,18 @@ func home(w http.ResponseWriter, r *http.Request) {
 func versionHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
-		isAuthorized, error := isCallerAuthorized(r)
-		if error == nil && isAuthorized {
-			c := clamd.NewClamd(opts["CLAMD_PORT"])
-			version, err := c.Version()
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		c := clamd.NewClamd(opts["CLAMD_PORT"])
+		version, err := c.Version()
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-			for versionstring := range version {
-				responseJSON := fmt.Sprintf("{\"version\": %#v}", versionstring.Raw)
-				fmt.Fprint(w, responseJSON)
-			}
-		} else {
-			http.Error(w, error.Error(), http.StatusForbidden)
+		for versionstring := range version {
+			responseJSON := fmt.Sprintf("{\"version\": %#v}", versionstring.Raw)
+			fmt.Fprint(w, responseJSON)
 		}
 
 	default:

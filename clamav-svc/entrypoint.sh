@@ -1,7 +1,7 @@
 #!/bin/sh
 freshclam -d &
 clamd &
-/usr/bin/clamav-rest &
+/usr/bin/clamav-svc &
 
 pids=`jobs -p`
 
