@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ImageTag:
+    Type: String
+    Description: Docker Repository Image URL
+  EndpointCertificate:
+    Type: String
+    Description: Type in the Certificate ARN that you intend to use
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select a VPC that allows instances access to the Internet.
+  SubnetId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select at two subnets in your selected VPC.
+  DesiredCapacity:
+    Type: Number
+    Default: '1'
+    Description: Number of instances to launch in your ECS cluster.
+  MaxSize:
+    Type: Number
+    Default: '1'
+    Description: Maximum number of instances that can be launched in your ECS cluster.
+Resources:
+  ClamECSCluster:
+    Type: AWS::ECS::Cluster
+  ClamALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref 'VpcId'
+  ClamALBSGHTTPSInbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'ClamALBSG'
+      IpProtocol: tcp
+      FromPort: '443'
+      ToPort: '443'
+      CidrIp: 0.0.0.0/0
+  ClamECSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref 'VpcId'
+  ClamECSSGContainerInbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'ClamECSSG'
+      IpProtocol: tcp
+      FromPort: '9000'
+      ToPort: '9000'
+      SourceSecurityGroupId: !GetAtt ClamALBSG.GroupId
+  ClamCloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['-', [ECSLogGroup, !Ref 'AWS::StackName']]
+      RetentionInDays: 3
+  ClamECSTask:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities:
+        - "FARGATE"
+      Family: !Join ['', [!Ref 'AWS::StackName', -clamav-svc]]
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt ClamECSServiceRole.Arn
+      TaskRoleArn: !GetAtt ClamECSServiceRole.Arn
+      Cpu: '1024'
+      Memory: '2048'
+      ContainerDefinitions:
+      - Name: clamav-svc
+        Essential: 'true'
+        Image: !Ref ImageTag
+        Environment:
+          - Name: "HMACKEY"
+            Value: !Ref ClamHMacSecret
+          - Name: "ROLES_DYNAMOTABLE"
+            Value: !Ref ClamAVConfigTable
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Ref 'ClamCloudwatchLogsGroup'
+            awslogs-region: !Ref 'AWS::Region'
+            awslogs-stream-prefix: clamav-svc
+        PortMappings:
+        - ContainerPort: 9000
+  ClamALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets: !Ref 'SubnetId'
+      SecurityGroups: [!Ref 'ClamALBSG']
+  ClamALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: ClamECSServiceRole
+    Properties:
+      Certificates:
+        -
+          CertificateArn: !Ref 'EndpointCertificate'
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ClamALBTargetGroup'
+      LoadBalancerArn: !Ref ClamALB
+      Port: '443'
+      Protocol: HTTPS
+  ClamALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    DependsOn: ClamALBListener
+    Properties:
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref 'ClamALBTargetGroup'
+      Conditions:
+      - Field: path-pattern
+        Values: [/]
+      ListenerArn: !Ref 'ClamALBListener'
+      Priority: 1
+  ClamALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: 'ClamALB'
+    Properties:
+      TargetType: 'ip'
+      HealthCheckIntervalSeconds: 180
+      HealthCheckPath: /version
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 120
+      HealthyThresholdCount: 2
+      Name: 'ClamALBTargetGroup'
+      Port: 9000
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref 'VpcId'
+  ClamECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ClamALBListener
+    Properties:
+      Cluster: !Ref 'ClamECSCluster'
+      DesiredCount: '1'
+      LaunchType: 'FARGATE'
+      LoadBalancers:
+        - ContainerName: clamav-svc
+          ContainerPort: '9000'
+          TargetGroupArn: !Ref 'ClamALBTargetGroup'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: 'ENABLED'
+          SecurityGroups:
+            - !Ref 'ClamECSSG'
+          Subnets: !Ref 'SubnetId'
+      ServiceName: 'clamav-service'
+      TaskDefinition: !Ref 'ClamECSTask'
+  ClamAVConfigTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: "service"
+          AttributeType: "S"
+      KeySchema:
+        -
+          AttributeName: "service"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: clamav_permissions
+  ClamHMacSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: ClamHmacSecret
+      Description: "This secret has a dynamically generated HMAC key."
+      GenerateSecretString:
+        SecretStringTemplate: '{"clamavkey": "test-key"}'
+        GenerateStringKey: "clamavkey"
+        PasswordLength: 30
+        ExcludeCharacters: '"@/\'
+      Tags:
+        - Key: AppName
+          Value: ClamAVScanner
+  ClamECSServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com,ecs.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: clamav-svc-db
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: 'dynamodb:GetItem'
+                Resource: !GetAtt ClamAVConfigTable.Arn
+        - PolicyName: clamav-svc-secret
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: 'secretsmanager:GetSecretValue'
+                Resource: !Ref ClamHMacSecret
+        - PolicyName: clamav-svc-ecs
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: ['elasticloadbalancing:DeregisterTargets',
+                         'elasticloadbalancing:Describe*',
+                         'elasticloadbalancing:RegisterTargets']
+                Resource: '*'
+
+Outputs:
+  clamecsservice:
+    Value: !Ref 'ClamECSService'
+  clamecscluster:
+    Value: !Ref 'ClamECSCluster'
+  clamalbendpoint:
+    Description: Your ALB DNS URL
+    Value: !Join ['', [!GetAtt [ClamALB, DNSName]]]
+  clamecstaskdef:
+    Value: !Ref 'ClamECSTask'
