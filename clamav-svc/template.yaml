@@ -59,7 +59,7 @@ Resources:
     Properties:
       RequiresCompatibilities:
         - "FARGATE"
-      Family: !Join ['', [!Ref 'AWS::StackName', -clamav-svc]]
+      Family: !Join ['', [!Ref 'AWS::StackName', -task]]
       NetworkMode: awsvpc
       ExecutionRoleArn: !GetAtt ClamECSServiceRole.Arn
       TaskRoleArn: !GetAtt ClamECSServiceRole.Arn
