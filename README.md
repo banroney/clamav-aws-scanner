@@ -63,12 +63,13 @@ In case, an infected file is found, it quarantines the file to a quarantine buck
 ## Component 1 - ClamAV Service
 
 In order to deploy this component, please go to AWS> CloudFormation
-Use the template.yaml to create teh stack. Create teh input and wait for all the components to be created and deployed. The outputs will display the endpoint for the 
+Use the template.yaml to create teh stack. Create teh input and wait for all the components to be created and deployed. The outputs will display the endpoint for the service which can be used as input to the lambda service. 
 
 
 ## Component 2 - Lambda Service
 
-
+In order to deploy this component, please go to AWS> CloudFormation
+Use the template.yaml to create teh stack. Create teh input and wait for all the components to be created and deployed. The outputs will display the endpoint for the service which can be used as input to the lambda service. 
 
 
 
