@@ -21,3 +21,4 @@
 **/.aws-sam
 **/.DS_Store
 
+clamav-svc/certs/_wildcard.us-east-1.elb.amazonaws.com-key.pem

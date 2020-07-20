@@ -6,4 +6,9 @@ There are 2 modules in this repository, the first one implements a malware servi
 
 ## 1.1 Overview
 The following blog describes Hashicorp Vault Integration in AWS. It focusses on three methods of accessing secrets in the
-Vault. However the following implementations has a few assumptions as below. All the following options 
+Vault. However the following implementations has a few assumptions as below. All the following options
+
+## 1.2 Architecture
+
+
+
